@@ -99,15 +99,15 @@ fn the_heaviest_edge_of_a_cycle_is_always_dropped() {
 }
 
 #[test]
-fn a_weight_function_can_keep_regions_whole() {
-    // Two 2x4 halves of a 4x4 grid, called counties. Surcharging the edges that
-    // cross between them should leave a tree that crosses exactly once, which
-    // is the least it can do and stay connected.
+fn a_cost_function_can_keep_labelled_groups_whole() {
+    // Label the two 2x4 halves of a 4x4 grid differently. Charging extra for
+    // the edges that run between labels should leave a tree that crosses just
+    // once, which is the least it can do and stay connected.
     let g = grid(4, 4);
     let ind = Induced::new(&g, &NodeSet::all(&g));
-    let county = |v: NodeId| v.0 / 8; // rows 0-1 vs rows 2-3
+    let label = |v: NodeId| v.0 / 8; // rows 0-1 vs rows 2-3
     let sampler = MinWeightTree::new(move |a: NodeId, b: NodeId, rng: &mut dyn RngCore| {
-        rng.gen::<f64>() + if county(a) != county(b) { 10.0 } else { 0.0 }
+        rng.gen::<f64>() + if label(a) != label(b) { 10.0 } else { 0.0 }
     });
 
     let mut rng = StdRng::seed_from_u64(4);
@@ -115,15 +115,12 @@ fn a_weight_function_can_keep_regions_whole() {
         let edges = canonical(&sampler.sample(&ind, &mut rng).unwrap());
         let crossings = edges
             .iter()
-            .filter(|&&(a, b)| county(NodeId(a)) != county(NodeId(b)))
+            .filter(|&&(a, b)| label(NodeId(a)) != label(NodeId(b)))
             .count();
-        assert_eq!(
-            crossings, 1,
-            "expected one county crossing, got {crossings}"
-        );
+        assert_eq!(crossings, 1, "expected one crossing, got {crossings}");
     }
 
-    // Without the surcharge it crosses more often, so the test above is not
+    // Without the extra cost it crosses more often, so the test above is not
     // measuring something that would happen anyway.
     let plain = MinWeightTree::random();
     let mut rng = StdRng::seed_from_u64(4);
@@ -131,7 +128,7 @@ fn a_weight_function_can_keep_regions_whole() {
         .map(|_| {
             canonical(&plain.sample(&ind, &mut rng).unwrap())
                 .iter()
-                .filter(|&&(a, b)| county(NodeId(a)) != county(NodeId(b)))
+                .filter(|&&(a, b)| label(NodeId(a)) != label(NodeId(b)))
                 .count()
         })
         .sum();

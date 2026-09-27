@@ -5,12 +5,11 @@
 //! produces. Two samplers ship:
 //!
 //! - [`Uniform`], Wilson's algorithm, which draws uniformly from all spanning
-//!   trees of the subgraph. This is what partigraph does and the default here.
-//! - [`MinWeightTree`], which weights each edge and takes the minimum spanning
-//!   tree. With independent random weights this is what GerryChain does. It is
-//!   *not* uniform — on K4 it over-produces stars — but it is cheap, and the
-//!   weight function is a place to express preferences about which edges a tree
-//!   should avoid.
+//!   trees of the subgraph. This is what partigraph does, and the default here.
+//! - [`MinWeightTree`], which costs every edge and takes the minimum spanning
+//!   tree. With independent random costs it is cheaper than Wilson's, but it is
+//!   *not* uniform: on K4 it over-produces stars. Its cost function is where a
+//!   caller says which edges a tree should prefer to avoid.
 
 use rand::{Rng, RngCore};
 
@@ -65,20 +64,21 @@ impl EdgeWeight for RandomWeights {
 /// use partigraph::{MinWeightTree, NodeId};
 /// use rand::{Rng, RngCore};
 ///
-/// // GerryChain's sampler: independent random weights.
+/// // Independent random costs.
 /// let plain = MinWeightTree::random();
 ///
-/// // Or anything else. This one keeps nodes of the same county together, by
-/// // making edges that cross a county line expensive and so unlikely to
-/// // survive into the tree.
-/// let county: Vec<u32> = vec![0, 0, 1, 1];
-/// let whole_counties = MinWeightTree::new(
+/// // Or anything a cost per edge can express. Given any labelling of the
+/// // nodes, charging extra for the edges that run between labels yields trees
+/// // that prefer to stay inside one label, and so cuts that tend to fall on
+/// // the boundaries.
+/// let label: Vec<u32> = vec![0, 0, 1, 1];
+/// let respect_labels = MinWeightTree::new(
 ///     move |a: NodeId, b: NodeId, rng: &mut dyn RngCore| {
-///         let crosses = county[a.index()] != county[b.index()];
+///         let crosses = label[a.index()] != label[b.index()];
 ///         rng.gen::<f64>() + if crosses { 1.0 } else { 0.0 }
 ///     },
 /// );
-/// # let _ = (plain, whole_counties);
+/// # let _ = (plain, respect_labels);
 /// ```
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MinWeightTree<W> {
@@ -86,7 +86,8 @@ pub struct MinWeightTree<W> {
 }
 
 impl MinWeightTree<RandomWeights> {
-    /// Independent random weights: the sampler GerryChain uses.
+    /// Independent random costs in `[0, 1)`, which is the cheapest way to get
+    /// a varied tree.
     pub fn random() -> MinWeightTree<RandomWeights> {
         MinWeightTree {
             weights: RandomWeights,

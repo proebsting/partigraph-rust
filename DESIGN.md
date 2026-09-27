@@ -5,7 +5,14 @@ partitioning into weight-balanced districts via uniform random spanning trees.
 
 ## Scope
 
-**This round: the library only. Done — see [README.md](README.md).** A CLI will follow, but it is a new thing that
+**This round: the library only. Done — see [README.md](README.md).**
+
+The library is general-purpose: it partitions weighted graphs. Redistricting is
+the motivating application and something like GerryChain is an anticipated
+client, but neither may be baked into the design. Domain knowledge belongs to
+the caller, or to the I/O layer when it exists. Where GerryChain is cited below
+it is as evidence for a decision or as a note about a file format, never as a
+requirement on the library. A CLI will follow, but it is a new thing that
 does not exist in the Python, so it gets designed once there is a library to put
 behind it.
 
@@ -30,7 +37,7 @@ when the CLI needs them, but nothing in the library depends on them.
 
 | | |
 | --- | --- |
-| GerryChain compatibility | read its graph files, write files it can read, emit plans it can consume. No Python bindings. |
+| GerryChain compatibility | **a CLI concern only.** The library stays domain-neutral: no redistricting vocabulary, no awareness of any particular client. When the CLI is built it will read GerryChain's graph files, write files it can read, and emit plans it can consume, all at the I/O boundary. No Python bindings. |
 | Spanning tree sampling | Wilson's by default; a pluggable sampler, with a min-weight tree over a caller-supplied edge weight function as the alternative |
 | Node identity | `NodeId(u32)` in the core; original ids live at the I/O boundary |
 | Correctness bar | property tests and statistical tests; no Python at test time |

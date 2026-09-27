@@ -47,9 +47,8 @@ to the first.
 **`Uniform`** is Wilson's algorithm: uniform over all spanning trees of the
 subgraph. This is what partigraph does, and the reason `ust.py` exists.
 
-**`MinWeightTree`** weights every edge and takes the minimum spanning tree. With
-independent random weights it is what GerryChain's `random_spanning_tree` does —
-faster than Wilson's, but not uniform.
+**`MinWeightTree`** costs every edge and takes the minimum spanning tree. With
+independent random costs it is faster than Wilson's, but it is not uniform.
 
 ```rust
 use partigraph::{MinWeightTree, Partitioner};
@@ -59,19 +58,21 @@ let plan = Partitioner::new(&graph, &weights)?
     .search(13, is_valid, &opts, &mut rng)?;
 ```
 
-The weight function is the extension point. It is any
+The cost function is the extension point. It is any
 `Fn(NodeId, NodeId, &mut dyn RngCore) -> f64`, and the endpoints are nodes of
 the parent graph even when a subset is being sampled, so a caller's own tables
-line up. Anything expressible as a cost per edge works — here, keeping counties
-whole by making the edges that cross between them expensive:
+line up. Anything expressible as a cost per edge works. Given any labelling of
+the nodes, for instance, charging extra for the edges that run between labels
+yields trees that prefer to stay inside one label, and so cuts that tend to fall
+on the boundaries:
 
 ```rust
-let keep_counties = MinWeightTree::new(move |a, b, rng: &mut dyn RngCore| {
-    rng.gen::<f64>() + if county[a.index()] != county[b.index()] { 10.0 } else { 0.0 }
+let respect_labels = MinWeightTree::new(move |a, b, rng: &mut dyn RngCore| {
+    rng.gen::<f64>() + if label[a.index()] != label[b.index()] { 10.0 } else { 0.0 }
 });
 ```
 
-A weight function that ignores the rng gives a deterministic tree.
+A cost function that ignores the rng gives a deterministic tree.
 
 ## Layout
 

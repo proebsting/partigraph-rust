@@ -5,10 +5,9 @@
 //! that is known *not* to be uniform through the same machinery and requiring it
 //! to be rejected.
 //!
-//! The stand-in is the library's own [`MinWeightTree`] with random weights,
-//! which is what GerryChain's `random_spanning_tree` does. It is a perfectly
-//! good way to draw a varied tree and it is a supported sampler here, but it is
-//! not uniform over spanning trees: on K4 it over-produces stars.
+//! The stand-in is the library's own [`MinWeightTree`] with random costs. It is
+//! a perfectly good way to draw a varied tree and is a supported sampler here,
+//! but it is not uniform over spanning trees: on K4 it over-produces stars.
 //!
 //! If this test ever fails because the MST sampler has become uniform,
 //! something is wrong with the MST, not with the bar.
