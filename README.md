@@ -106,8 +106,25 @@ ideal`. Everything else in the input file -- node and edge attributes, the
 rest, including `--assignment` to name the attribute and `--sampler` to choose
 how trees are drawn.
 
-None of this is in the core library, and none of it has to go through a file or
-the binary. The same work is one call:
+None of this is in the core library, and none of it has to go through a file at
+all. If you already hold a graph and a weight per node, the core does the whole
+job in one call and never sees any JSON:
+
+```rust
+use partigraph::{partition_balanced, BalanceParams, Graph};
+
+let graph = Graph::from_edges(node_count, edges)?;
+let result = partition_balanced(&graph, &populations, &BalanceParams {
+    parts: 13,
+    epsilon: 0.01,
+    seed: 42,
+    ..Default::default()
+})?;
+
+println!("worst deviation {:.4}", result.worst_deviation());
+```
+
+Starting from a file instead, the same work is:
 
 ```rust
 use partigraph_io::{build_seed_map, AdjacencyGraph, SeedMapOptions};
@@ -124,7 +141,9 @@ println!("worst deviation {:.4}", report.worst_deviation());
 ```
 
 or, if you want the partition rather than a file, `seed_map` returns it and
-`write_assignment` puts it onto a graph separately.
+`write_assignment` puts it onto a graph separately. `SeedMapOptions::params()`
+hands the compute-only subset to `partition_balanced`, so the two routes are
+the same computation and are tested to agree.
 
 ## Layout
 
@@ -146,6 +165,10 @@ crates/
 The layering is deliberate. `partigraph` knows about graphs, weights and parts.
 `adjacency` knows about a file format. Everything that is specific to
 redistricting, or to any particular consumer, lives in `seedmap` and above.
+
+The split holds at the API too: nothing you need in order to partition a graph
+requires `partigraph-io`. `partition_balanced` is the whole operation, and
+`partigraph` depends only on `rand`.
 
 ## How it differs from the Python
 

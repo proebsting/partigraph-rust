@@ -13,27 +13,32 @@
 //! a relative tolerance on part population, parts numbered from zero. The
 //! [`crate::adjacency`] module below it knows none of that, and neither does
 //! the `partigraph` core.
+//!
+//! # Getting in without a file
+//!
+//! The work splits at the point where a file stops being involved. A caller
+//! that already holds a graph and a weight per node does not need this module
+//! at all, and should call [`partigraph::partition_balanced`] directly — it
+//! takes the same parameters, does the same search, and costs no dependency on
+//! JSON. [`seed_partition`] is the same thing returning a [`SeedMap`], for
+//! callers that want to go on to write a file.
 
 use partigraph::{
-    within_epsilon, MinWeightTree, NodeId, Partition, Partitioner, SearchOptions, Uniform,
+    partition_balanced, BalanceParams, BalancedPartition, Graph, NodeId, Partition, SearchOptions,
 };
-use rand::{rngs::StdRng, SeedableRng};
 use serde_json::Value;
 
 use crate::{AdjacencyGraph, Error};
 
-/// Which spanning-tree sampler to partition with.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum Sampler {
-    /// Wilson's algorithm: uniform over spanning trees.
-    #[default]
-    Uniform,
-    /// Random-weight minimum spanning tree. Faster, not uniform. This is what
-    /// GerryChain's `random_spanning_tree` does.
-    MinWeightTree,
-}
+pub use partigraph::SamplerChoice as Sampler;
 
 /// What to ask of a seed map.
+///
+/// Two kinds of thing, deliberately: `parts`, `epsilon`, `seed`, `sampler` and
+/// `search` say what to compute, and [`params`](SeedMapOptions::params) hands
+/// exactly those to the core. `population_attr` and `assignment_attr` say only
+/// what the columns are called in a file, and are of no interest to anyone who
+/// does not have one.
 #[derive(Clone, Debug)]
 pub struct SeedMapOptions {
     /// How many parts to divide the graph into.
@@ -52,6 +57,19 @@ pub struct SeedMapOptions {
     pub search: SearchOptions,
 }
 
+impl SeedMapOptions {
+    /// The subset that says what to compute, with the attribute names dropped.
+    pub fn params(&self) -> BalanceParams {
+        BalanceParams {
+            parts: self.parts,
+            epsilon: self.epsilon,
+            seed: self.seed,
+            sampler: self.sampler,
+            search: self.search.clone(),
+        }
+    }
+}
+
 impl Default for SeedMapOptions {
     fn default() -> Self {
         SeedMapOptions {
@@ -67,7 +85,11 @@ impl Default for SeedMapOptions {
 }
 
 /// A seed map, and what it came out to.
-#[derive(Clone, Debug)]
+///
+/// The same data as [`BalancedPartition`], named for what it means here: these
+/// weights are populations. The core does not know that, which is why this is
+/// its own type rather than a re-export.
+#[derive(Clone, PartialEq, Debug)]
 pub struct SeedMap {
     pub partition: Partition,
     /// Total population of each part, indexed by part.
@@ -79,21 +101,43 @@ pub struct SeedMap {
 impl SeedMap {
     /// The largest relative deviation from ideal across the parts.
     pub fn worst_deviation(&self) -> f64 {
-        if self.ideal == 0.0 {
-            return 0.0;
-        }
-        self.populations
-            .iter()
-            .map(|p| (p - self.ideal).abs() / self.ideal)
-            .fold(0.0, f64::max)
+        self.as_balanced().worst_deviation()
     }
 
     /// Node counts per part, indexed by part.
     pub fn sizes(&self) -> Vec<usize> {
-        (0..self.partition.part_count())
-            .map(|p| self.partition.part(p as u32).count())
-            .collect()
+        self.as_balanced().sizes()
     }
+
+    fn as_balanced(&self) -> BalancedPartition {
+        BalancedPartition {
+            partition: self.partition.clone(),
+            part_weights: self.populations.clone(),
+            ideal: self.ideal,
+        }
+    }
+}
+
+impl From<BalancedPartition> for SeedMap {
+    fn from(b: BalancedPartition) -> SeedMap {
+        SeedMap {
+            partition: b.partition,
+            populations: b.part_weights,
+            ideal: b.ideal,
+        }
+    }
+}
+
+/// Partition a graph whose populations the caller already holds.
+///
+/// The half of [`seed_map`] that needs no file. Equivalent to
+/// [`partigraph::partition_balanced`], returning a [`SeedMap`].
+pub fn seed_partition(
+    graph: &Graph,
+    populations: &[f64],
+    params: &BalanceParams,
+) -> Result<SeedMap, Error> {
+    Ok(partition_balanced(graph, populations, params)?.into())
 }
 
 /// Partition `graph` into population-balanced parts.
@@ -109,9 +153,9 @@ pub fn seed_map(graph: &AdjacencyGraph, opts: &SeedMapOptions) -> Result<SeedMap
         return Err(Error::BadEpsilon(opts.epsilon));
     }
 
-    // An island makes the graph disconnected, which the partitioner refuses.
-    // Say so in the terms the file is written in, rather than as a bare
-    // "not connected".
+    // Stays here rather than in the core, because it reports node labels and
+    // the core has none. The core refuses a disconnected graph anyway, but
+    // "node 37001000001 has no neighbours" beats "the graph is not connected".
     let islands = graph.islands();
     if !islands.is_empty() {
         return Err(Error::Islands {
@@ -125,35 +169,11 @@ pub fn seed_map(graph: &AdjacencyGraph, opts: &SeedMapOptions) -> Result<SeedMap
         });
     }
 
-    let core = graph.to_graph()?;
-    let populations = graph.numeric_node_attr(&opts.population_attr)?;
-    let total: f64 = populations.iter().sum();
-    let ideal = total / opts.parts as f64;
-
-    let partitioner = Partitioner::new(&core, &populations)?;
-    let mut rng = StdRng::seed_from_u64(opts.seed);
-    let valid = within_epsilon(ideal, opts.epsilon);
-
-    let partition = match opts.sampler {
-        Sampler::Uniform => {
-            partitioner
-                .with_sampler(Uniform)
-                .search(opts.parts, valid, &opts.search, &mut rng)
-        }
-        Sampler::MinWeightTree => partitioner.with_sampler(MinWeightTree::random()).search(
-            opts.parts,
-            valid,
-            &opts.search,
-            &mut rng,
-        ),
-    }?;
-
-    let part_populations = partition.part_weights(&populations);
-    Ok(SeedMap {
-        partition,
-        populations: part_populations,
-        ideal,
-    })
+    seed_partition(
+        &graph.to_graph()?,
+        &graph.numeric_node_attr(&opts.population_attr)?,
+        &opts.params(),
+    )
 }
 
 /// Write a partition onto a graph as a node attribute, ready to be saved.

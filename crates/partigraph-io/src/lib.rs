@@ -10,6 +10,10 @@
 //!
 //! The `partigraph` core below both knows about neither.
 //!
+//! If you already hold a graph and a weight per node, you do not need this
+//! crate: call [`partigraph::partition_balanced`], which does the same search
+//! without going near JSON.
+//!
 //! ```no_run
 //! use partigraph_io::{build_seed_map, AdjacencyGraph, SeedMapOptions};
 //!
@@ -33,7 +37,13 @@ pub mod adjacency;
 pub mod seedmap;
 
 pub use adjacency::{AdjacencyGraph, NodeLabel};
-pub use seedmap::{build_seed_map, seed_map, write_assignment, Sampler, SeedMap, SeedMapOptions};
+pub use seedmap::{
+    build_seed_map, seed_map, seed_partition, write_assignment, Sampler, SeedMap, SeedMapOptions,
+};
+
+/// Re-exported so a caller can build [`SeedMapOptions::params`] without
+/// naming the core crate.
+pub use partigraph::BalanceParams;
 
 use std::path::PathBuf;
 
@@ -153,7 +163,12 @@ impl From<serde_json::Error> for Error {
 
 impl From<partigraph::Error> for Error {
     fn from(e: partigraph::Error) -> Error {
-        Error::Partitioning(e)
+        match e {
+            // This crate has its own variant for it, from before the check
+            // moved into the core.
+            partigraph::Error::BadEpsilon(v) => Error::BadEpsilon(v),
+            other => Error::Partitioning(other),
+        }
     }
 }
 

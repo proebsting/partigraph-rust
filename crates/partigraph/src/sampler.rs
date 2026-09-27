@@ -113,3 +113,28 @@ impl<S: TreeSampler + ?Sized> TreeSampler for &S {
         (**self).sample(subgraph, rng)
     }
 }
+
+/// A choice between the built-in samplers, made at runtime.
+///
+/// [`Partitioner`](crate::Partitioner) is generic over its sampler, which is
+/// the better way round when the choice is known at compile time. This enum is
+/// for callers that carry the choice as data — from a command line, a config
+/// file, or a parameter struct — and it implements [`TreeSampler`] itself, so
+/// it drops straight into `with_sampler`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SamplerChoice {
+    /// [`Uniform`]: Wilson's algorithm.
+    #[default]
+    Uniform,
+    /// [`MinWeightTree`] with independent random costs.
+    MinWeightTree,
+}
+
+impl TreeSampler for SamplerChoice {
+    fn sample(&self, subgraph: &Induced, rng: &mut dyn RngCore) -> Result<Tree, Error> {
+        match self {
+            SamplerChoice::Uniform => Uniform.sample(subgraph, rng),
+            SamplerChoice::MinWeightTree => MinWeightTree::random().sample(subgraph, rng),
+        }
+    }
+}

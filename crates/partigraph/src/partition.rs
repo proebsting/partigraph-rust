@@ -2,10 +2,11 @@
 
 use std::ops::Range;
 
-use rand::Rng;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 use crate::graph::{Graph, Induced, NodeId, NodeSet};
-use crate::sampler::{TreeSampler, Uniform};
+use crate::sampler::{SamplerChoice, TreeSampler, Uniform};
 use crate::tree::{self, Tree};
 use crate::Error;
 
@@ -510,4 +511,116 @@ impl<'a, S: TreeSampler> Partitioner<'a, S> {
         }
         Err(Error::Exhausted { attempts })
     }
+}
+
+/// What to ask of a weight-balanced partition.
+///
+/// Everything here is about *what to compute*. Nothing in it refers to a file,
+/// an attribute name, or any particular domain.
+#[derive(Clone, Debug)]
+pub struct BalanceParams {
+    /// How many parts to divide the graph into.
+    pub parts: usize,
+    /// Allowed relative deviation from the ideal part weight, so a part is
+    /// acceptable when `|weight - ideal| <= epsilon * ideal`.
+    pub epsilon: f64,
+    /// Seed for the random number generator; the same seed reproduces the same
+    /// partition for the same graph and weights.
+    pub seed: u64,
+    pub sampler: SamplerChoice,
+    pub search: SearchOptions,
+}
+
+impl Default for BalanceParams {
+    fn default() -> Self {
+        BalanceParams {
+            parts: 2,
+            epsilon: 0.01,
+            seed: 0,
+            sampler: SamplerChoice::default(),
+            search: SearchOptions::default(),
+        }
+    }
+}
+
+/// A partition, with how its weight came out.
+#[derive(Clone, PartialEq, Debug)]
+pub struct BalancedPartition {
+    pub partition: Partition,
+    /// Total weight of each part, indexed by part.
+    pub part_weights: Vec<f64>,
+    /// Total weight divided by the number of parts.
+    pub ideal: f64,
+}
+
+impl BalancedPartition {
+    /// The largest relative deviation from ideal across the parts.
+    pub fn worst_deviation(&self) -> f64 {
+        if self.ideal == 0.0 {
+            return 0.0;
+        }
+        self.part_weights
+            .iter()
+            .map(|w| (w - self.ideal).abs() / self.ideal)
+            .fold(0.0, f64::max)
+    }
+
+    /// Node counts per part, indexed by part.
+    pub fn sizes(&self) -> Vec<usize> {
+        (0..self.partition.part_count())
+            .map(|p| self.partition.part(p as u32).count())
+            .collect()
+    }
+}
+
+/// Divide a weighted graph into `parts` parts of approximately equal weight.
+///
+/// The whole job in one call, for a caller that already holds a graph and a
+/// weight per node: work out the ideal weight, run the search to a relative
+/// tolerance, and report what came out.
+///
+/// ```
+/// use partigraph::{partition_balanced, BalanceParams, Graph};
+///
+/// let graph = Graph::from_edges(4, [(0, 1), (1, 2), (2, 3)])?;
+/// let weights = vec![1.0; 4];
+///
+/// let result = partition_balanced(
+///     &graph,
+///     &weights,
+///     &BalanceParams { parts: 2, epsilon: 0.0, seed: 7, ..Default::default() },
+/// )?;
+///
+/// assert_eq!(result.ideal, 2.0);
+/// assert_eq!(result.part_weights, vec![2.0, 2.0]);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn partition_balanced(
+    graph: &Graph,
+    weights: &[f64],
+    params: &BalanceParams,
+) -> Result<BalancedPartition, Error> {
+    if params.parts == 0 {
+        return Err(Error::NoParts);
+    }
+    if !(params.epsilon.is_finite() && params.epsilon >= 0.0) {
+        return Err(Error::BadEpsilon(params.epsilon));
+    }
+
+    let partitioner = Partitioner::new(graph, weights)?;
+    let ideal = weights.iter().sum::<f64>() / params.parts as f64;
+    let mut rng = StdRng::seed_from_u64(params.seed);
+    let partition = partitioner.with_sampler(params.sampler).search(
+        params.parts,
+        within_epsilon(ideal, params.epsilon),
+        &params.search,
+        &mut rng,
+    )?;
+
+    let part_weights = partition.part_weights(weights);
+    Ok(BalancedPartition {
+        partition,
+        part_weights,
+        ideal,
+    })
 }

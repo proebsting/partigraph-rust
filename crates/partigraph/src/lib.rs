@@ -41,8 +41,11 @@ pub mod ust;
 
 pub use graph::{Graph, GraphError, Induced, NodeId, NodeSet};
 pub use mst::min_weight_spanning_tree;
-pub use partition::{within_epsilon, Division, Partition, Partitioner, SearchOptions};
-pub use sampler::{EdgeWeight, MinWeightTree, RandomWeights, TreeSampler, Uniform};
+pub use partition::{
+    partition_balanced, within_epsilon, BalanceParams, BalancedPartition, Division, Partition,
+    Partitioner, SearchOptions,
+};
+pub use sampler::{EdgeWeight, MinWeightTree, RandomWeights, SamplerChoice, TreeSampler, Uniform};
 pub use tree::{aggregate, any, sums, Cut, EdgeValues, Side, Tree};
 pub use ust::random_spanning_tree;
 
@@ -62,6 +65,8 @@ pub enum Error {
     BadWeight { node: NodeId, weight: f64 },
     /// Zero parts were asked for.
     NoParts,
+    /// A tolerance was negative, infinite, or NaN.
+    BadEpsilon(f64),
     /// More parts than nodes were asked for.
     TooFewNodes { nodes: usize, parts: usize },
     /// A single node cannot be divided in two.
@@ -89,6 +94,9 @@ impl std::fmt::Display for Error {
                 )
             }
             Error::NoParts => write!(f, "at least one part is required"),
+            Error::BadEpsilon(e) => {
+                write!(f, "the tolerance must be finite and non-negative, got {e}")
+            }
             Error::TooFewNodes { nodes, parts } => {
                 write!(f, "cannot split {nodes} nodes into {parts} parts")
             }

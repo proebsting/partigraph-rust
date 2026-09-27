@@ -10,7 +10,25 @@ partitioning into weight-balanced parts via uniform random spanning trees.
 The example client is `partigraph-seedmap`: read a GerryChain graph, partition
 it into population-balanced parts, write the graph back with the assignment on
 its nodes. It is intentionally narrow, and everything it does is available as a
-library call in `partigraph-io` so it can be reused without the binary.
+library call so it can be reused without the binary.
+
+The operation itself is `partigraph::partition_balanced`, in the core, taking a
+`Graph` and a weight slice. `partigraph-io`'s `seed_map` is a wrapper that
+reads the population attribute out of a file and delegates. A caller that
+already holds an adjacency list and weights does not need `partigraph-io`, or
+JSON, at all, and the two routes are tested to give the same answer.
+
+Two things fall out of the split, both decided rather than defaulted:
+
+- **`SeedMapOptions` splits into two.** `parts`, `epsilon`, `seed`, `sampler`
+  and `search` say what to compute and become `BalanceParams` in the core.
+  `population_attr` and `assignment_attr` say what the columns are called in a
+  file, and stay in `partigraph-io` where a file exists.
+- **The island check stays in the wrapper.** It reports node labels, which the
+  core does not have. The core refuses a disconnected graph anyway via
+  `Error::Disconnected`; it does not get a separate island check, because a
+  degree-zero node is only one way to be disconnected and singling it out in
+  the core would privilege the case that happens to be common in dual graphs.
 
 The library is general-purpose: it partitions weighted graphs. Redistricting is
 the motivating application and something like GerryChain is an anticipated
