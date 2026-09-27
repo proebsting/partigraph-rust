@@ -4,7 +4,7 @@
 //! than the Cover Time" (1996).
 //! <https://www.cs.cmu.edu/~15859n/RelatedWork/RandomTrees-Wilson.pdf>
 
-use rand::Rng;
+use rand::{Rng, RngCore};
 
 use crate::graph::{Graph, Induced, NodeSet};
 use crate::tree::Tree;
@@ -24,7 +24,7 @@ pub fn random_spanning_tree(
 }
 
 /// Wilson's algorithm over a prebuilt induced subgraph.
-pub(crate) fn wilson(ind: &Induced, rng: &mut impl Rng) -> Result<Tree, Error> {
+pub(crate) fn wilson(ind: &Induced, rng: &mut dyn RngCore) -> Result<Tree, Error> {
     let k = ind.len();
     if k == 0 {
         return Err(Error::EmptySubset);

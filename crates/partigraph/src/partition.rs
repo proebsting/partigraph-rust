@@ -5,8 +5,8 @@ use std::ops::Range;
 use rand::Rng;
 
 use crate::graph::{Graph, Induced, NodeId, NodeSet};
+use crate::sampler::{TreeSampler, Uniform};
 use crate::tree::{self, Tree};
-use crate::ust::wilson;
 use crate::Error;
 
 #[inline]
@@ -109,18 +109,23 @@ pub fn within_epsilon(target: f64, epsilon: f64) -> impl Fn(f64) -> bool {
 }
 
 /// Partitions a graph into districts of approximately equal weight.
+///
+/// The type parameter is the [`TreeSampler`] used for every division and every
+/// transfer; it defaults to [`Uniform`], which is Wilson's algorithm. Swap it
+/// with [`Partitioner::with_sampler`].
 #[derive(Clone, Debug)]
-pub struct Partitioner<'a> {
+pub struct Partitioner<'a, S = Uniform> {
     graph: &'a Graph,
     weights: &'a [f64],
+    sampler: S,
 }
 
-impl<'a> Partitioner<'a> {
+impl<'a> Partitioner<'a, Uniform> {
     /// `weights` is indexed by [`NodeId`] and must be finite and non-negative.
     ///
     /// The Python takes a `get_weight` callable or a node-attribute name. A slice
     /// covers both and keeps attribute lookup out of the algorithm.
-    pub fn new(graph: &'a Graph, weights: &'a [f64]) -> Result<Partitioner<'a>, Error> {
+    pub fn new(graph: &'a Graph, weights: &'a [f64]) -> Result<Partitioner<'a, Uniform>, Error> {
         if graph.node_count() == 0 {
             return Err(Error::EmptyGraph);
         }
@@ -142,7 +147,26 @@ impl<'a> Partitioner<'a> {
                 weight: w,
             });
         }
-        Ok(Partitioner { graph, weights })
+        Ok(Partitioner {
+            graph,
+            weights,
+            sampler: Uniform,
+        })
+    }
+}
+
+impl<'a, S: TreeSampler> Partitioner<'a, S> {
+    /// Draw spanning trees with `sampler` instead of Wilson's algorithm.
+    pub fn with_sampler<T: TreeSampler>(self, sampler: T) -> Partitioner<'a, T> {
+        Partitioner {
+            graph: self.graph,
+            weights: self.weights,
+            sampler,
+        }
+    }
+
+    pub fn sampler(&self) -> &S {
+        &self.sampler
     }
 
     pub fn graph(&self) -> &Graph {
@@ -207,7 +231,7 @@ impl<'a> Partitioner<'a> {
         if ind.len() < 2 {
             return Err(Abort::Retry);
         }
-        let tree = wilson(&ind, rng)?;
+        let tree = self.sampler.sample(&ind, rng)?;
         let w = self.tree_weights(&tree);
         let best = tree
             .cuts()
@@ -251,7 +275,7 @@ impl<'a> Partitioner<'a> {
             return Err(Error::NotAdjacent);
         }
 
-        let tree = wilson(&ind, rng)?;
+        let tree = self.sampler.sample(&ind, rng)?;
         let w = self.tree_weights(&tree);
         let reaches = tree::any(&tree, |l| on_border[l as usize]);
         let keep = match keep_adjacent {

@@ -9,9 +9,10 @@ and a weight per node, get an assignment back, no files in the middle -- with a
 command-line interface to follow.
 
 **Status: the library is ported.** All of `ust.py`, `spanning_tree.py`, and
-`partition.py`, with the behaviour changes listed below. The CLI is not written
-yet; it is a new thing that does not exist in the Python, so it is being designed
-separately. See [DESIGN.md](DESIGN.md).
+`partition.py`, with the behaviour changes listed below, plus a pluggable tree
+sampler the Python does not have. The CLI is not written yet; it is a new thing
+that does not exist in the Python, so it is being designed separately. See
+[DESIGN.md](DESIGN.md).
 
 ## Using it
 
@@ -37,12 +38,49 @@ for (node, district) in plan.assignments().iter().enumerate() {
 `within_epsilon` is a convenience over it. The rng is threaded through
 explicitly, so a seeded run reproduces exactly.
 
+## Choosing how trees are drawn
+
+Which spanning trees the partitioner tends to draw is what shapes the districts
+it produces, so the sampler is a parameter. Two ship, and `Partitioner` defaults
+to the first.
+
+**`Uniform`** is Wilson's algorithm: uniform over all spanning trees of the
+subgraph. This is what partigraph does, and the reason `ust.py` exists.
+
+**`MinWeightTree`** weights every edge and takes the minimum spanning tree. With
+independent random weights it is what GerryChain's `random_spanning_tree` does —
+faster than Wilson's, but not uniform.
+
+```rust
+use partigraph::{MinWeightTree, Partitioner};
+
+let plan = Partitioner::new(&graph, &weights)?
+    .with_sampler(MinWeightTree::random())
+    .search(13, is_valid, &opts, &mut rng)?;
+```
+
+The weight function is the extension point. It is any
+`Fn(NodeId, NodeId, &mut dyn RngCore) -> f64`, and the endpoints are nodes of
+the parent graph even when a subset is being sampled, so a caller's own tables
+line up. Anything expressible as a cost per edge works — here, keeping counties
+whole by making the edges that cross between them expensive:
+
+```rust
+let keep_counties = MinWeightTree::new(move |a, b, rng: &mut dyn RngCore| {
+    rng.gen::<f64>() + if county[a.index()] != county[b.index()] { 10.0 } else { 0.0 }
+});
+```
+
+A weight function that ignores the rng gives a deterministic tree.
+
 ## Layout
 
 ```
 crates/partigraph/
   graph.rs       CSR graph, NodeId, node sets, induced subgraphs
   ust.rs         Wilson's algorithm
+  mst.rs         minimum spanning tree over caller-supplied edge weights
+  sampler.rs     the TreeSampler and EdgeWeight traits
   tree.rs        parent-array trees, aggregate, cuts
   partition.rs   Partitioner, search
 ```
@@ -114,10 +152,15 @@ checked against uniform with chi-square.
 **And that bar has teeth**, which is checked separately, because a chi-square
 test with too few draws passes for any sampler and would make the table above
 vacuous. The same machinery, at the same draw count, seed and threshold, must
-*reject* a sampler known not to be uniform. The stand-in is a random-weight
-minimum spanning tree -- which is what GerryChain's `random_spanning_tree` does.
-On K4 at 64,000 draws it scores **142.3** against the same 37.70 bar that
-Wilson's clears at 21.45.
+*reject* a sampler known not to be uniform. The stand-in is the library's own
+`MinWeightTree::random()`. On K4 at 64,000 draws it scores **142.3** against the
+same 37.70 bar that Wilson's clears at 21.45, and the shape of its bias is
+pinned down too: it produces stars 26.9% of the time where uniform would give
+25%, which is 8.7 standard deviations out.
+
+That is not a knock on the MST sampler, which is supported and is the faster of
+the two. It is the difference between the two being real and measured rather
+than asserted.
 
 **Differential.** `aggregate` and the cut machinery are reimplemented the slow,
 obvious way -- flood fill over an adjacency list rebuilt from the parent
@@ -126,7 +169,8 @@ monoid to check nothing is special-cased.
 
 **Invariants.** Every district is non-empty and contiguous in the graph, checked
 by an independent flood fill; districts partition the node set exactly; weights
-land inside the requested tolerance; a seed reproduces a plan.
+land inside the requested tolerance; a seed reproduces a plan; both samplers
+satisfy all of it, and swapping them changes the plan.
 
 ```bash
 cargo test
@@ -136,13 +180,15 @@ cargo test
 
 Partitioning a grid into equal districts to a 1% tolerance, one core:
 
-| | partigraph | partigraph-rust | |
+| | partigraph | Wilson's | min-weight tree |
 | --- | --- | --- | --- |
-| 2,500 nodes, 10 districts | 138 ms/plan | 6.2 ms/plan | 22x |
-| 10,000 nodes, 20 districts | 812 ms/plan | 28.4 ms/plan | 29x |
+| 2,500 nodes, 10 districts | 138 ms/plan | 5.5 ms/plan | 2.2 ms/plan |
+| 10,000 nodes, 20 districts | 812 ms/plan | 29.6 ms/plan | 12.7 ms/plan |
 
-Both produce exactly equal districts on these inputs, so the comparison is like
-for like. Reproduce the Rust side with:
+All three produce exactly equal districts on these inputs, so the comparison is
+like for like. The Python uses Wilson's, so the middle column is the one to
+compare it against: 25x and 27x. The MST sampler is roughly twice as fast again,
+which is the trade for giving up uniformity.
 
 ```bash
 cargo run --release --example bench -- 100 20 10

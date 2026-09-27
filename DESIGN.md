@@ -31,7 +31,7 @@ when the CLI needs them, but nothing in the library depends on them.
 | | |
 | --- | --- |
 | GerryChain compatibility | read its graph files, write files it can read, emit plans it can consume. No Python bindings. |
-| Spanning tree sampling | Wilson's algorithm only — uniform over spanning trees |
+| Spanning tree sampling | Wilson's by default; a pluggable sampler, with a min-weight tree over a caller-supplied edge weight function as the alternative |
 | Node identity | `NodeId(u32)` in the core; original ids live at the I/O boundary |
 | Correctness bar | property tests and statistical tests; no Python at test time |
 | Layout | one crate now; I/O and CLI crates when the CLI is designed |

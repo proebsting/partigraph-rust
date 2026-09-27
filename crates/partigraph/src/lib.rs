@@ -33,12 +33,16 @@
 //! ```
 
 pub mod graph;
+pub mod mst;
 pub mod partition;
+pub mod sampler;
 pub mod tree;
 pub mod ust;
 
 pub use graph::{Graph, GraphError, Induced, NodeId, NodeSet};
+pub use mst::min_weight_spanning_tree;
 pub use partition::{within_epsilon, Division, Partitioner, Plan, SearchOptions};
+pub use sampler::{EdgeWeight, MinWeightTree, RandomWeights, TreeSampler, Uniform};
 pub use tree::{aggregate, any, sums, Cut, EdgeValues, Side, Tree};
 pub use ust::random_spanning_tree;
 
