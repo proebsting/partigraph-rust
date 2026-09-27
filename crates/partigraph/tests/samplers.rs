@@ -187,7 +187,7 @@ fn the_partitioner_works_with_either_sampler() {
     let opts = SearchOptions::default();
 
     for seed in 0..5u64 {
-        for (name, plan) in [
+        for (name, partition) in [
             (
                 "uniform",
                 base.search(
@@ -207,13 +207,13 @@ fn the_partitioner_works_with_either_sampler() {
                 ),
             ),
         ] {
-            let plan = plan.unwrap_or_else(|e| panic!("{name} sampler failed: {e}"));
-            assert_eq!(plan.district_weights(&weights), vec![6.0; 6], "{name}");
+            let partition = partition.unwrap_or_else(|e| panic!("{name} sampler failed: {e}"));
+            assert_eq!(partition.part_weights(&weights), vec![6.0; 6], "{name}");
             for d in 0..6u32 {
-                let nodes: Vec<u32> = plan.district(d).map(|v| v.0).collect();
+                let nodes: Vec<u32> = partition.part(d).map(|v| v.0).collect();
                 assert!(
                     is_contiguous(&g, &nodes),
-                    "{name}: district {d} is not contiguous"
+                    "{name}: part {d} is not contiguous"
                 );
             }
         }

@@ -1,7 +1,7 @@
 # partigraph-rust: design
 
 A Rust port of [partigraph](https://github.com/proebsting/partigraph), graph
-partitioning into weight-balanced districts via uniform random spanning trees.
+partitioning into weight-balanced parts via uniform random spanning trees.
 
 ## Scope
 
@@ -146,18 +146,19 @@ pub struct SearchOptions {
     pub max_attempts: usize,   // bound on the outer retry loop
 }
 
-pub struct Plan { district_of: Vec<u32>, n_districts: usize }
+pub struct Partition { part_of: Vec<u32>, part_count: usize }
 
-impl<'a> Partitioner<'a> {
-    pub fn new(graph: &'a Graph, weights: &'a [f64]) -> Result<Self, PartitionError>;
+impl<'a, S: TreeSampler> Partitioner<'a, S> {
+    pub fn new(graph: &'a Graph, weights: &'a [f64]) -> Result<Self, Error>;
+    pub fn with_sampler<T: TreeSampler>(self, sampler: T) -> Partitioner<'a, T>;
 
     pub fn search(
         &self,
-        n_districts: usize,
+        part_count: usize,
         is_valid: impl Fn(f64) -> bool,
         opts: &SearchOptions,
         rng: &mut impl Rng,
-    ) -> Result<Plan, PartitionError>;
+    ) -> Result<Partition, Error>;
 }
 ```
 
@@ -165,10 +166,12 @@ Three changes from the Python signature:
 
 - **Weights are a slice, not a callable.** `get_weight` and `weight_field` collapse
   into `&[f64]` indexed by `NodeId`. Reading the attribute is the I/O crate's job.
-- **Districts are `0..n`, not a generic `[T]`.** The Python threads a type parameter
-  through five methods to return `dict[T, set[Node]]`. Returning an assignment
-  vector indexed by node is cheaper and is also the shape GerryChain's
-  `Assignment.from_dict` wants. Callers map indices to their own labels.
+- **Parts are `0..n`, not a generic `[T]`.** The Python calls them *districts*
+  and threads a type parameter through five methods to return
+  `dict[T, set[Node]]`.
+  Returning an assignment vector indexed by node is cheaper, and it is also the
+  shape an assignment-keyed consumer wants. Callers map indices to their own
+  labels, and the neutral name keeps the library free of a domain.
 - **`is_valid` stays a predicate**, which is strictly more general than GerryChain's
   `pop_target` + `epsilon`. `within_epsilon(target, eps)` is provided for the
   common case.

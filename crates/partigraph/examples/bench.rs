@@ -25,7 +25,7 @@ fn main() {
         .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(50);
-    let districts: usize = std::env::args()
+    let parts: usize = std::env::args()
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
@@ -37,7 +37,7 @@ fn main() {
     let g = grid(side, side);
     let n = g.node_count();
     let weights = vec![1.0; n];
-    let target = n as f64 / districts as f64;
+    let target = n as f64 / parts as f64;
     let p = Partitioner::new(&g, &weights).unwrap();
     let opts = SearchOptions::default();
 
@@ -45,27 +45,27 @@ fn main() {
         .unwrap()
         .with_sampler(MinWeightTree::random());
 
-    println!("{n} nodes, {districts} districts, {runs} plans each");
+    println!("{n} nodes, {parts} parts, {runs} partitions each");
     for name in ["uniform (Wilson's)", "min-weight tree"] {
         let mut rng = StdRng::seed_from_u64(1);
         let mut last = None;
         let start = Instant::now();
         for _ in 0..runs {
             let valid = within_epsilon(target, 0.01);
-            let plan = if name.starts_with("uniform") {
-                p.search(districts, valid, &opts, &mut rng)
+            let partition = if name.starts_with("uniform") {
+                p.search(parts, valid, &opts, &mut rng)
             } else {
-                mst.search(districts, valid, &opts, &mut rng)
+                mst.search(parts, valid, &opts, &mut rng)
             };
-            last = Some(plan.unwrap());
+            last = Some(partition.unwrap());
         }
         let elapsed = start.elapsed();
-        let mut sizes: Vec<usize> = (0..districts as u32)
-            .map(|d| last.as_ref().unwrap().district(d).count())
+        let mut sizes: Vec<usize> = (0..parts as u32)
+            .map(|d| last.as_ref().unwrap().part(d).count())
             .collect();
         sizes.sort_unstable();
         println!(
-            "  {name:20} {:.3}s total, {:6.1} ms/plan   (last plan sizes {sizes:?})",
+            "  {name:20} {:.3}s total, {:6.1} ms/partition   (last partition sizes {sizes:?})",
             elapsed.as_secs_f64(),
             elapsed.as_secs_f64() * 1000.0 / runs as f64
         );

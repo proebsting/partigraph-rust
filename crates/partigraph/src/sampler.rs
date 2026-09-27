@@ -1,7 +1,7 @@
 //! Choosing a spanning tree at random.
 //!
 //! The partitioner draws a fresh spanning tree for every division and every
-//! transfer, and which trees it tends to draw is what shapes the districts it
+//! transfer, and which trees it tends to draw is what shapes the parts it
 //! produces. Two samplers ship:
 //!
 //! - [`Uniform`], Wilson's algorithm, which draws uniformly from all spanning

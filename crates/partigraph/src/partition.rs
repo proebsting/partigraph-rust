@@ -1,4 +1,4 @@
-//! Recursive bisection of a graph into weight-balanced districts.
+//! Recursive bisection of a graph into weight-balanced parts.
 
 use std::ops::Range;
 
@@ -60,44 +60,44 @@ impl Default for SearchOptions {
     }
 }
 
-/// An assignment of every node to a district in `0..district_count`.
+/// An assignment of every node to a part in `0..part_count`.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Plan {
-    district_of: Vec<u32>,
-    district_count: usize,
+pub struct Partition {
+    part_of: Vec<u32>,
+    part_count: usize,
 }
 
-impl Plan {
+impl Partition {
     #[inline]
-    pub fn district_count(&self) -> usize {
-        self.district_count
+    pub fn part_count(&self) -> usize {
+        self.part_count
     }
 
     #[inline]
-    pub fn district_of(&self, v: NodeId) -> u32 {
-        self.district_of[v.index()]
+    pub fn part_of(&self, v: NodeId) -> u32 {
+        self.part_of[v.index()]
     }
 
-    /// District index per node, indexed by [`NodeId`].
+    /// Part index per node, indexed by [`NodeId`].
     #[inline]
     pub fn assignments(&self) -> &[u32] {
-        &self.district_of
+        &self.part_of
     }
 
-    /// The nodes of one district.
-    pub fn district(&self, d: u32) -> impl Iterator<Item = NodeId> + '_ {
-        self.district_of
+    /// The nodes of one part.
+    pub fn part(&self, part: u32) -> impl Iterator<Item = NodeId> + '_ {
+        self.part_of
             .iter()
             .enumerate()
-            .filter(move |&(_, &x)| x == d)
+            .filter(move |&(_, &x)| x == part)
             .map(|(i, _)| NodeId(i as u32))
     }
 
-    /// Total weight of each district, indexed by district.
-    pub fn district_weights(&self, weights: &[f64]) -> Vec<f64> {
-        let mut totals = vec![0.0; self.district_count];
-        for (i, &d) in self.district_of.iter().enumerate() {
-            totals[d as usize] += weights[i];
+    /// Total weight of each part, indexed by part.
+    pub fn part_weights(&self, weights: &[f64]) -> Vec<f64> {
+        let mut totals = vec![0.0; self.part_count];
+        for (i, &part) in self.part_of.iter().enumerate() {
+            totals[part as usize] += weights[i];
         }
         totals
     }
@@ -108,7 +108,7 @@ pub fn within_epsilon(target: f64, epsilon: f64) -> impl Fn(f64) -> bool {
     move |w| (w - target).abs() <= epsilon * target.abs()
 }
 
-/// Partitions a graph into districts of approximately equal weight.
+/// Partitions a graph into parts of approximately equal weight.
 ///
 /// The type parameter is the [`TreeSampler`] used for every division and every
 /// transfer; it defaults to [`Uniform`], which is Wilson's algorithm. Swap it
@@ -391,19 +391,19 @@ impl<'a, S: TreeSampler> Partitioner<'a, S> {
         &self,
         nodes: &NodeSet,
         weight: f64,
-        districts: Range<u32>,
+        parts: Range<u32>,
         opts: &SearchOptions,
         is_valid: &dyn Fn(f64) -> bool,
         rng: &mut impl Rng,
         out: &mut [u32],
     ) -> Result<(), Abort> {
-        let count = districts.len();
+        let count = parts.len();
         if count == 1 {
             if !is_valid(weight) {
                 return Err(Abort::Retry);
             }
             for &v in nodes.members() {
-                out[v as usize] = districts.start;
+                out[v as usize] = parts.start;
             }
             return Ok(());
         }
@@ -411,8 +411,8 @@ impl<'a, S: TreeSampler> Partitioner<'a, S> {
             return Err(Abort::Retry);
         }
 
-        let mid = districts.start + (count / 2) as u32;
-        let (first, second) = (districts.start..mid, mid..districts.end);
+        let mid = parts.start + (count / 2) as u32;
+        let (first, second) = (parts.start..mid, mid..parts.end);
         let scaled = weight / count as f64 * first.len() as f64;
 
         for _ in 0..opts.backtrack.max(1) {
@@ -459,23 +459,23 @@ impl<'a, S: TreeSampler> Partitioner<'a, S> {
         Err(Abort::Retry)
     }
 
-    /// Partition the whole graph into `district_count` districts, every one of
+    /// Partition the whole graph into `part_count` parts, every one of
     /// which satisfies `is_valid`.
     pub fn search(
         &self,
-        district_count: usize,
+        part_count: usize,
         is_valid: impl Fn(f64) -> bool,
         opts: &SearchOptions,
         rng: &mut impl Rng,
-    ) -> Result<Plan, Error> {
+    ) -> Result<Partition, Error> {
         let n = self.graph.node_count();
-        if district_count == 0 {
-            return Err(Error::NoDistricts);
+        if part_count == 0 {
+            return Err(Error::NoParts);
         }
-        if district_count > n {
+        if part_count > n {
             return Err(Error::TooFewNodes {
                 nodes: n,
-                districts: district_count,
+                parts: part_count,
             });
         }
         if !self.graph.is_connected() {
@@ -492,16 +492,16 @@ impl<'a, S: TreeSampler> Partitioner<'a, S> {
             match self.partition_equally(
                 &all,
                 total,
-                0..district_count as u32,
+                0..part_count as u32,
                 opts,
                 check,
                 rng,
                 &mut out,
             ) {
                 Ok(()) => {
-                    return Ok(Plan {
-                        district_of: out,
-                        district_count,
+                    return Ok(Partition {
+                        part_of: out,
+                        part_count,
                     })
                 }
                 Err(Abort::Retry) => continue,

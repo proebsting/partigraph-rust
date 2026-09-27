@@ -1,4 +1,4 @@
-//! Graph partitioning into weight-balanced districts using uniform random
+//! Graph partitioning into weight-balanced parts using uniform random
 //! spanning trees.
 //!
 //! A Rust port of [partigraph](https://github.com/proebsting/partigraph).
@@ -25,10 +25,10 @@
 //! let weights = vec![1.0; 16];
 //!
 //! let mut rng = StdRng::seed_from_u64(20260926);
-//! let plan = Partitioner::new(&graph, &weights)?
+//! let partition = Partitioner::new(&graph, &weights)?
 //!     .search(4, within_epsilon(4.0, 0.0), &SearchOptions::default(), &mut rng)?;
 //!
-//! assert_eq!(plan.district_weights(&weights), vec![4.0; 4]);
+//! assert_eq!(partition.part_weights(&weights), vec![4.0; 4]);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
@@ -41,7 +41,7 @@ pub mod ust;
 
 pub use graph::{Graph, GraphError, Induced, NodeId, NodeSet};
 pub use mst::min_weight_spanning_tree;
-pub use partition::{within_epsilon, Division, Partitioner, Plan, SearchOptions};
+pub use partition::{within_epsilon, Division, Partition, Partitioner, SearchOptions};
 pub use sampler::{EdgeWeight, MinWeightTree, RandomWeights, TreeSampler, Uniform};
 pub use tree::{aggregate, any, sums, Cut, EdgeValues, Side, Tree};
 pub use ust::random_spanning_tree;
@@ -60,10 +60,10 @@ pub enum Error {
     WeightCountMismatch { nodes: usize, weights: usize },
     /// A weight was negative, infinite, or NaN.
     BadWeight { node: NodeId, weight: f64 },
-    /// Zero districts were asked for.
-    NoDistricts,
-    /// More districts than nodes were asked for.
-    TooFewNodes { nodes: usize, districts: usize },
+    /// Zero parts were asked for.
+    NoParts,
+    /// More parts than nodes were asked for.
+    TooFewNodes { nodes: usize, parts: usize },
     /// A single node cannot be divided in two.
     Indivisible,
     /// A transfer was asked for between two sets that do not touch.
@@ -88,9 +88,9 @@ impl std::fmt::Display for Error {
                     node.0
                 )
             }
-            Error::NoDistricts => write!(f, "at least one district is required"),
-            Error::TooFewNodes { nodes, districts } => {
-                write!(f, "cannot split {nodes} nodes into {districts} districts")
+            Error::NoParts => write!(f, "at least one part is required"),
+            Error::TooFewNodes { nodes, parts } => {
+                write!(f, "cannot split {nodes} nodes into {parts} parts")
             }
             Error::Indivisible => write!(f, "a single node cannot be divided"),
             Error::NotAdjacent => write!(f, "the two partitions do not share a border"),

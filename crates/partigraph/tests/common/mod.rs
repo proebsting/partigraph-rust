@@ -33,7 +33,7 @@ pub fn cycle(n: u32) -> Graph {
 }
 
 /// Is the subgraph induced by `nodes` connected? Independent flood fill, used to
-/// check district contiguity without going through the library's own machinery.
+/// check part contiguity without going through the library's own machinery.
 pub fn is_contiguous(graph: &Graph, nodes: &[u32]) -> bool {
     if nodes.is_empty() {
         return false;

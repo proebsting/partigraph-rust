@@ -1,34 +1,33 @@
-//! End-to-end partitioning: the invariants a plan must satisfy, and the error
+//! End-to-end partitioning: the invariants a partition must satisfy, and the error
 //! paths the Python either hangs on or reports as a bare `ValueError`.
 
 mod common;
 
 use common::{grid, is_contiguous};
-use partigraph::{within_epsilon, Error, Graph, NodeId, NodeSet, Partitioner, Plan, SearchOptions};
+use partigraph::{
+    within_epsilon, Error, Graph, NodeId, NodeSet, Partition, Partitioner, SearchOptions,
+};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-/// Every node assigned exactly once, every district non-empty and contiguous.
-fn check_plan(graph: &Graph, plan: &Plan) {
-    assert_eq!(plan.assignments().len(), graph.node_count());
-    for (i, &d) in plan.assignments().iter().enumerate() {
+/// Every node assigned exactly once, every part non-empty and contiguous.
+fn check_plan(graph: &Graph, partition: &Partition) {
+    assert_eq!(partition.assignments().len(), graph.node_count());
+    for (i, &d) in partition.assignments().iter().enumerate() {
         assert!(
-            (d as usize) < plan.district_count(),
-            "node {i} is assigned to district {d}, outside 0..{}",
-            plan.district_count()
+            (d as usize) < partition.part_count(),
+            "node {i} is assigned to part {d}, outside 0..{}",
+            partition.part_count()
         );
     }
-    for d in 0..plan.district_count() as u32 {
-        let nodes: Vec<u32> = plan.district(d).map(|v| v.0).collect();
-        assert!(!nodes.is_empty(), "district {d} is empty");
-        assert!(
-            is_contiguous(graph, &nodes),
-            "district {d} is not contiguous"
-        );
+    for d in 0..partition.part_count() as u32 {
+        let nodes: Vec<u32> = partition.part(d).map(|v| v.0).collect();
+        assert!(!nodes.is_empty(), "part {d} is empty");
+        assert!(is_contiguous(graph, &nodes), "part {d} is not contiguous");
     }
 }
 
 #[test]
-fn splits_a_grid_into_exactly_equal_districts() {
+fn splits_a_grid_into_exactly_equal_parts() {
     let g = grid(4, 4);
     let weights = vec![1.0; 16];
     let p = Partitioner::new(&g, &weights).unwrap();
@@ -36,16 +35,16 @@ fn splits_a_grid_into_exactly_equal_districts() {
 
     for seed in 0..20u64 {
         let mut rng = StdRng::seed_from_u64(seed);
-        let plan = p
+        let partition = p
             .search(4, within_epsilon(4.0, 0.0), &opts, &mut rng)
             .unwrap();
-        check_plan(&g, &plan);
-        assert_eq!(plan.district_weights(&weights), vec![4.0; 4]);
+        check_plan(&g, &partition);
+        assert_eq!(partition.part_weights(&weights), vec![4.0; 4]);
     }
 }
 
 #[test]
-fn splits_a_larger_grid_into_exactly_equal_districts() {
+fn splits_a_larger_grid_into_exactly_equal_parts() {
     let g = grid(6, 6);
     let weights = vec![1.0; 36];
     let p = Partitioner::new(&g, &weights).unwrap();
@@ -53,11 +52,11 @@ fn splits_a_larger_grid_into_exactly_equal_districts() {
 
     for seed in 0..5u64 {
         let mut rng = StdRng::seed_from_u64(seed);
-        let plan = p
+        let partition = p
             .search(6, within_epsilon(6.0, 0.0), &opts, &mut rng)
             .unwrap();
-        check_plan(&g, &plan);
-        assert_eq!(plan.district_weights(&weights), vec![6.0; 6]);
+        check_plan(&g, &partition);
+        assert_eq!(partition.part_weights(&weights), vec![6.0; 6]);
     }
 }
 
@@ -67,37 +66,37 @@ fn honours_a_tolerance_on_uneven_weights() {
     let mut rng = StdRng::seed_from_u64(77);
     let weights: Vec<f64> = (0..64).map(|_| rng.gen_range(1.0..20.0)).collect();
     let total: f64 = weights.iter().sum();
-    let districts = 4;
-    let target = total / districts as f64;
+    let parts = 4;
+    let target = total / parts as f64;
     let epsilon = 0.05;
 
     let p = Partitioner::new(&g, &weights).unwrap();
-    let plan = p
+    let partition = p
         .search(
-            districts,
+            parts,
             within_epsilon(target, epsilon),
             &SearchOptions::default(),
             &mut rng,
         )
         .unwrap();
 
-    check_plan(&g, &plan);
-    for (d, w) in plan.district_weights(&weights).iter().enumerate() {
+    check_plan(&g, &partition);
+    for (d, w) in partition.part_weights(&weights).iter().enumerate() {
         let deviation = (w - target).abs() / target;
         assert!(
             deviation <= epsilon,
-            "district {d} deviates by {deviation}, over {epsilon}"
+            "part {d} deviates by {deviation}, over {epsilon}"
         );
     }
 }
 
 #[test]
-fn a_district_per_node_is_allowed() {
+fn a_part_per_node_is_allowed() {
     let g = grid(2, 2);
     let weights = vec![1.0; 4];
     let p = Partitioner::new(&g, &weights).unwrap();
     let mut rng = StdRng::seed_from_u64(9);
-    let plan = p
+    let partition = p
         .search(
             4,
             within_epsilon(1.0, 0.0),
@@ -105,22 +104,22 @@ fn a_district_per_node_is_allowed() {
             &mut rng,
         )
         .unwrap();
-    check_plan(&g, &plan);
-    let mut assigned = plan.assignments().to_vec();
+    check_plan(&g, &partition);
+    let mut assigned = partition.assignments().to_vec();
     assigned.sort_unstable();
     assert_eq!(assigned, vec![0, 1, 2, 3]);
 }
 
 #[test]
-fn one_district_takes_everything() {
+fn one_part_takes_everything() {
     let g = grid(3, 3);
     let weights = vec![1.0; 9];
     let p = Partitioner::new(&g, &weights).unwrap();
     let mut rng = StdRng::seed_from_u64(11);
-    let plan = p
+    let partition = p
         .search(1, |_| true, &SearchOptions::default(), &mut rng)
         .unwrap();
-    assert_eq!(plan.assignments(), vec![0; 9]);
+    assert_eq!(partition.assignments(), vec![0; 9]);
 }
 
 #[test]
@@ -144,7 +143,7 @@ fn the_same_seed_gives_the_same_plan() {
 
 #[test]
 fn an_unsatisfiable_constraint_gives_up_instead_of_hanging() {
-    // Three unit nodes cannot be split into two districts of 1.5 each. The
+    // Three unit nodes cannot be split into two parts of 1.5 each. The
     // Python loops forever here.
     let g = grid(1, 3);
     let weights = vec![1.0; 3];
@@ -208,16 +207,10 @@ fn bad_inputs_are_named() {
     let p = Partitioner::new(&g, &weights).unwrap();
     let mut rng = StdRng::seed_from_u64(1);
     let opts = SearchOptions::default();
-    assert_eq!(
-        p.search(0, |_| true, &opts, &mut rng),
-        Err(Error::NoDistricts)
-    );
+    assert_eq!(p.search(0, |_| true, &opts, &mut rng), Err(Error::NoParts));
     assert_eq!(
         p.search(9, |_| true, &opts, &mut rng),
-        Err(Error::TooFewNodes {
-            nodes: 4,
-            districts: 9
-        })
+        Err(Error::TooFewNodes { nodes: 4, parts: 9 })
     );
 }
 

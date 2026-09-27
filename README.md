@@ -1,12 +1,17 @@
 # partigraph-rust
 
 A Rust implementation of [partigraph](https://github.com/proebsting/partigraph),
-which partitions a graph into districts of approximately equal weight using
-uniform random spanning trees.
+which partitions a graph into parts of approximately equal weight using uniform
+random spanning trees.
 
 The goal is a library you can call from another Rust program -- hand it a graph
 and a weight per node, get an assignment back, no files in the middle -- with a
 command-line interface to follow.
+
+It is a general-purpose weighted-graph partitioner. Redistricting is the
+motivating application, and the Python calls the parts *districts*, but nothing
+about a domain is baked in: the library knows about graphs, weights and parts,
+and everything else belongs to the caller.
 
 **Status: the library is ported.** All of `ust.py`, `spanning_tree.py`, and
 `partition.py`, with the behaviour changes listed below, plus a pluggable tree
@@ -26,11 +31,11 @@ let weights: Vec<f64> = /* one per node, indexed by NodeId */;
 let target = weights.iter().sum::<f64>() / 13.0;
 let mut rng = StdRng::seed_from_u64(42);
 
-let plan = Partitioner::new(&graph, &weights)?
+let partition = Partitioner::new(&graph, &weights)?
     .search(13, within_epsilon(target, 0.01), &SearchOptions::default(), &mut rng)?;
 
-for (node, district) in plan.assignments().iter().enumerate() {
-    println!("{node} -> {district}");
+for (node, part) in partition.assignments().iter().enumerate() {
+    println!("{node} -> {part}");
 }
 ```
 
@@ -40,7 +45,7 @@ explicitly, so a seeded run reproduces exactly.
 
 ## Choosing how trees are drawn
 
-Which spanning trees the partitioner tends to draw is what shapes the districts
+Which spanning trees the partitioner tends to draw is what shapes the parts
 it produces, so the sampler is a parameter. Two ship, and `Partitioner` defaults
 to the first.
 
@@ -53,7 +58,7 @@ independent random costs it is faster than Wilson's, but it is not uniform.
 ```rust
 use partigraph::{MinWeightTree, Partitioner};
 
-let plan = Partitioner::new(&graph, &weights)?
+let partition = Partitioner::new(&graph, &weights)?
     .with_sampler(MinWeightTree::random())
     .search(13, is_valid, &opts, &mut rng)?;
 ```
@@ -168,10 +173,10 @@ obvious way -- flood fill over an adjacency list rebuilt from the parent
 pointers -- and compared on many random trees, for sum, for or, and for a third
 monoid to check nothing is special-cased.
 
-**Invariants.** Every district is non-empty and contiguous in the graph, checked
-by an independent flood fill; districts partition the node set exactly; weights
-land inside the requested tolerance; a seed reproduces a plan; both samplers
-satisfy all of it, and swapping them changes the plan.
+**Invariants.** Every part is non-empty and contiguous in the graph, checked
+by an independent flood fill; parts partition the node set exactly; weights
+land inside the requested tolerance; a seed reproduces a partition; both samplers
+satisfy all of it, and swapping them changes the partition.
 
 ```bash
 cargo test
@@ -179,14 +184,14 @@ cargo test
 
 ## Performance
 
-Partitioning a grid into equal districts to a 1% tolerance, one core:
+Partitioning a grid into equal parts to a 1% tolerance, one core:
 
 | | partigraph | Wilson's | min-weight tree |
 | --- | --- | --- | --- |
-| 2,500 nodes, 10 districts | 138 ms/plan | 5.5 ms/plan | 2.2 ms/plan |
-| 10,000 nodes, 20 districts | 812 ms/plan | 29.6 ms/plan | 12.7 ms/plan |
+| 2,500 nodes, 10 parts | 138 ms/partition | 5.5 ms/partition | 2.2 ms/partition |
+| 10,000 nodes, 20 parts | 812 ms/partition | 29.6 ms/partition | 12.7 ms/partition |
 
-All three produce exactly equal districts on these inputs, so the comparison is
+All three produce exactly equal parts on these inputs, so the comparison is
 like for like. The Python uses Wilson's, so the middle column is the one to
 compare it against: 25x and 27x. The MST sampler is roughly twice as fast again,
 which is the trade for giving up uniformity.
