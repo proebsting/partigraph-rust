@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/partigraph"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "MIT"
+repository = "https://github.com/proebsting/partigraph-rust"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
