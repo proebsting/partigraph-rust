@@ -1,0 +1,21 @@
+[package]
+name = "partigraph-cli"
+description = "Command-line seed-map generator built on partigraph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "partigraph-seedmap"
+path = "src/main.rs"
+
+[dependencies]
+partigraph.workspace = true
+partigraph-io.workspace = true
+rand.workspace = true
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+serde_json.workspace = true

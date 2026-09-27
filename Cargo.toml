@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/partigraph"]
+members = ["crates/partigraph", "crates/partigraph-io", "crates/partigraph-cli"]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,6 +8,12 @@ edition = "2021"
 rust-version = "1.77"
 license = "MIT"
 repository = "https://github.com/proebsting/partigraph-rust"
+
+[workspace.dependencies]
+partigraph = { path = "crates/partigraph", version = "0.1.0" }
+partigraph-io = { path = "crates/partigraph-io", version = "0.1.0" }
+rand = { version = "0.8", features = ["std", "std_rng"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 
 [profile.release]
 lto = "thin"

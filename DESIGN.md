@@ -5,7 +5,12 @@ partitioning into weight-balanced parts via uniform random spanning trees.
 
 ## Scope
 
-**This round: the library only. Done — see [README.md](README.md).**
+**Done: the library, and one example client — see [README.md](README.md).**
+
+The example client is `partigraph-seedmap`: read a GerryChain graph, partition
+it into population-balanced parts, write the graph back with the assignment on
+its nodes. It is intentionally narrow, and everything it does is available as a
+library call in `partigraph-io` so it can be reused without the binary.
 
 The library is general-purpose: it partitions weighted graphs. Redistricting is
 the motivating application and something like GerryChain is an anticipated
@@ -41,7 +46,7 @@ when the CLI needs them, but nothing in the library depends on them.
 | Spanning tree sampling | Wilson's by default; a pluggable sampler, with a min-weight tree over a caller-supplied edge weight function as the alternative |
 | Node identity | `NodeId(u32)` in the core; original ids live at the I/O boundary |
 | Correctness bar | property tests and statistical tests; no Python at test time |
-| Layout | one crate now; I/O and CLI crates when the CLI is designed |
+| Layout | `partigraph` (library), `partigraph-io` (format + seed maps), `partigraph-cli` (the binary) |
 
 ## Layout
 

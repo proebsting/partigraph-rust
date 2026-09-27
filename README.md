@@ -13,10 +13,8 @@ motivating application, and the Python calls the parts *districts*, but nothing
 about a domain is baked in: the library knows about graphs, weights and parts,
 and everything else belongs to the caller.
 
-**Status: the library is ported.** All of `ust.py`, `spanning_tree.py`, and
-`partition.py`, with the behaviour changes listed below, plus a pluggable tree
-sampler the Python does not have. The CLI is not written yet; it is a new thing
-that does not exist in the Python, so it is being designed separately. See
+**Status: the library is ported**, plus a pluggable tree sampler the Python does
+not have, and one example client: a command-line seed-map generator. See
 [DESIGN.md](DESIGN.md).
 
 ## Using it
@@ -79,19 +77,75 @@ let respect_labels = MinWeightTree::new(move |a, b, rng: &mut dyn RngCore| {
 
 A cost function that ignores the rng gives a deterministic tree.
 
+## An example client: seed maps for GerryChain
+
+`partigraph-seedmap` is a deliberately narrow command-line tool, kept as a
+worked example of using the library end to end. It reads a graph in the
+networkx "adjacency" JSON format that GerryChain's `Graph.to_json` writes,
+partitions it into population-balanced parts, and writes the same graph back
+out with one extra node attribute holding each node's part:
+
+```bash
+partigraph-seedmap \
+    --graph NC.json --output NC_seed.json \
+    --parts 13 --pop-col TOTPOP --epsilon 0.01 --seed 42
+```
+
+The result is a seed map, ready to start a chain from:
+
+```python
+graph = Graph.from_json("NC_seed.json")
+partition = Partition(graph, "district", updaters)
+```
+
+Parts are written as integers numbered from zero, which is what GerryChain's own
+`Partition.from_random_assignment` produces, and `--epsilon` means what
+GerryChain's `epsilon` means: a part passes when `|pop - ideal| <= epsilon *
+ideal`. Everything else in the input file -- node and edge attributes, the
+`graph` field, node order -- is written back untouched. `--help` documents the
+rest, including `--assignment` to name the attribute and `--sampler` to choose
+how trees are drawn.
+
+None of this is in the core library, and none of it has to go through a file or
+the binary. The same work is one call:
+
+```rust
+use partigraph_io::{build_seed_map, AdjacencyGraph, SeedMapOptions};
+
+let graph = AdjacencyGraph::read("NC.json")?;
+let (seeded, report) = build_seed_map(&graph, &SeedMapOptions {
+    parts: 13,
+    population_attr: "TOTPOP".into(),
+    epsilon: 0.01,
+    ..Default::default()
+})?;
+seeded.write("NC_seed.json")?;
+println!("worst deviation {:.4}", report.worst_deviation());
+```
+
+or, if you want the partition rather than a file, `seed_map` returns it and
+`write_assignment` puts it onto a graph separately.
+
 ## Layout
 
 ```
-crates/partigraph/
-  graph.rs       CSR graph, NodeId, node sets, induced subgraphs
-  ust.rs         Wilson's algorithm
-  mst.rs         minimum spanning tree over caller-supplied edge weights
-  sampler.rs     the TreeSampler and EdgeWeight traits
-  tree.rs        parent-array trees, aggregate, cuts
-  partition.rs   Partitioner, search
+crates/
+  partigraph/        the library; rand is its only dependency
+    graph.rs           CSR graph, NodeId, node sets, induced subgraphs
+    ust.rs             Wilson's algorithm
+    mst.rs             minimum spanning tree over caller-supplied edge weights
+    sampler.rs         the TreeSampler and EdgeWeight traits
+    tree.rs            parent-array trees, aggregate, cuts
+    partition.rs       Partitioner, search
+  partigraph-io/     reading and writing graphs
+    adjacency.rs       the networkx adjacency JSON format, and nothing else
+    seedmap.rs         the seed-map operation and its conventions
+  partigraph-cli/    the partigraph-seedmap binary; argument parsing only
 ```
 
-`rand` is the only dependency.
+The layering is deliberate. `partigraph` knows about graphs, weights and parts.
+`adjacency` knows about a file format. Everything that is specific to
+redistricting, or to any particular consumer, lives in `seedmap` and above.
 
 ## How it differs from the Python
 
@@ -177,6 +231,15 @@ monoid to check nothing is special-cased.
 by an independent flood fill; parts partition the node set exactly; weights
 land inside the requested tolerance; a seed reproduces a partition; both samplers
 satisfy all of it, and swapping them changes the partition.
+
+**The file format, against a file GerryChain wrote.** `partigraph-io`'s tests run
+against GerryChain 1.0.0's own bundled `gerrymandria` graph, committed as a
+fixture, rather than one this crate invented and could be consistently wrong
+about. They cover the round trip, each of the four format traps above, and every
+way the file can be malformed. Seed maps are checked for contiguity by a flood
+fill over the *written JSON*, not by asking the library that produced it. The
+binary is driven as a user drives it, including its exit codes and `--help`.
+No Python runs at test time.
 
 ```bash
 cargo test
